@@ -6,6 +6,7 @@ on:
     branches:
     - main
     - master
+    - test
 
   pull_request:
     branches:
@@ -38,7 +39,7 @@ jobs:
       shell: pwsh
       # ⚠️ CRITICAL: Only run the script if the trigger was a pull_request
       # This prevents it from failing when run by 'push' or 'workflow_dispatch'
-      if: github.event_name == 'pull_request'
+
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
