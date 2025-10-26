@@ -1,23 +1,27 @@
 name: 🤖 AI Pull Request Review (PowerShell + RAG)
 
 on:
-  # ➡️ ADDED: Triggers on every push to master or main
-  push:
-    branches:
-    - main
-    - master
-
   pull_request:
     branches:
     - main
     - master
-
-  workflow_dispatch:
-
+  # push:
+  #   branches:
+  #   - test
+  # 1. IMPLEMENT CONCURRENCY: Ensures only one PR is reviewed at a time.
+  # New runs for the same PR will cancel the old run, preventing conflicts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   ai_pr_review:
     runs-on: ubuntu-latest
+
+    # 2. IMPLEMENT WRITE PERMISSIONS: CRITICAL for posting comments.
+    permissions:
+      contents: read
+      pull-requests: write # This grants the token permission to post comments
 
     steps:
     - name: Checkout code
@@ -28,16 +32,35 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Install Tools
+    # 🟢 NEW STEP: Install Python, SQLite, and Pylint
+    - name: Setup Tools (Python, SQLite, Pylint)
       run: |
+        # Install Python 3.x for Pylint
         sudo apt-get update
-        sudo apt-get install -y sqlite3
-        pip install pylint
+        sudo apt-get install -y python3 python3-pip
 
+        # Install SQLite3 executable for DB logging
+        sudo apt-get install -y sqlite3
+
+        # Install Pylint for RAG/Context
+        pip3 install pylint
+    - name: 🚀 Deploy GPT-4o Model
+      uses: azure/cli@v1
+      with:
+        inlineScript: |
+          echo "Starting model deployment based on hardcoded values..."
+          az cognitiveservices account deployment create \
+            --resource-group RG \
+            --name expact \
+            --deployment-name gpt4o-deploy \
+            --model-name gpt-4o \
+            --model-version "2024-11-20" \
+            --model-format OpenAI \
+            --sku-capacity 1 \
+            --sku-name "Standard"
+          echo "Deployment task complete."
     - name: Run PowerShell PR Review Script
       shell: pwsh
-      # ⚠️ CRITICAL: Only run the script if the trigger was a pull_request
-      # This prevents it from failing when run by 'push' or 'workflow_dispatch'
       if: github.event_name == 'pull_request'
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
