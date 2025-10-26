@@ -5,11 +5,8 @@ on:
     branches:
     - main
     - master
-  # push:
-  #   branches:
-  #   - test
-  # 1. IMPLEMENT CONCURRENCY: Ensures only one PR is reviewed at a time.
-  # New runs for the same PR will cancel the old run, preventing conflicts.
+
+# 🛑 Single Active PR Control 🛑
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -18,37 +15,38 @@ jobs:
   ai_pr_review:
     runs-on: ubuntu-latest
 
-    # 2. IMPLEMENT WRITE PERMISSIONS: CRITICAL for posting comments.
     permissions:
       contents: read
-      pull-requests: write # This grants the token permission to post comments
+      pull-requests: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
-
-    # 🟢 NEW STEP: Install Python, SQLite, and Pylint
+    # 🟢 Step 1: Setup Tools (Python, SQLite, Pylint)
     - name: Setup Tools (Python, SQLite, Pylint)
       run: |
-        # Install Python 3.x for Pylint
         sudo apt-get update
         sudo apt-get install -y python3 python3-pip
+        sudo apt-get install -y sqlite3 # For DB logging
+        pip3 install pylint # For RAG/Context
 
-        # Install SQLite3 executable for DB logging
-        sudo apt-get install -y sqlite3
+    # ⭐ Step 2: Login to Azure (CRITICAL: Required for subsequent 'az' commands)
+    - name: Azure Login for Deployment
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        enable-AzPSSession: true
 
-        # Install Pylint for RAG/Context
-        pip3 install pylint
+    # ⭐ Step 3: Deploy GPT-4o Model to Azure OpenAI#
     - name: 🚀 Deploy GPT-4o Model
       shell: bash
       run: |
         echo "Starting model deployment based on hardcoded values..."
-        # Running the az command directly in the shell after azure/login@v1 ensures authentication context is available.
+        # Verify login and set the subscription context explicitly.
+        az account show --query name -o tsv || true
+        az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
+
         az cognitiveservices account deployment create \
           --resource-group RG \
           --name expact \
@@ -59,13 +57,15 @@ jobs:
           --sku-capacity 1 \
           --sku-name "Standard"
         echo "Deployment task complete."
+
+    # ⭐ Step 4: Run PowerShell PR Review Script (The main logic)
     - name: Run PowerShell PR Review Script
       shell: pwsh
       if: github.event_name == 'pull_request'
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
+        OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }} # Reverting to using the secret value
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
