@@ -1,4 +1,4 @@
-name: 🤖 AI Pull Request Review (PowerShell + RAG)
+name: AI Pull Request Review (PowerShell + RAG)
 
 on:
   pull_request:
@@ -10,44 +10,43 @@ on:
       - main
       - master
 
-# Ensure only one workflow run in progress for a given workflow/run-id
+# single active workflow run per workflow/run-id
 concurrency:
-  group: ${{ github.workflow }}-${{ github.run_id }}
+  group: "${{ github.workflow }}-${{ github.run_id }}"
   cancel-in-progress: true
 
 jobs:
-  # ============================================================
-  # JOB 1: AI PR Review (runs ONLY on Pull Requests)
-  # ============================================================
   ai_pr_review:
+    name: AI PR Review
     runs-on: ubuntu-latest
+    # only run this job for pull_request events
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
       pull-requests: write
 
     steps:
-      - name: 🛠️ Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: ⚙️ Setup Tools (Python, SQLite, Pylint)
+      - name: Setup Tools (Python, SQLite, Pylint)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip sqlite3
           pip3 install pylint
 
-      - name: 🔐 Azure Login for Deployment
+      - name: Azure Login for Deployment
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
 
-      - name: 🚀 Deploy GPT-4o Model
+      - name: Deploy GPT-4o Model
         shell: bash
         run: |
-          echo "Starting model deployment based on hardcoded values..."
+          echo "Starting model deployment..."
           az account show --query name -o tsv || true
           az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
 
@@ -61,9 +60,9 @@ jobs:
             --sku-capacity 1 \
             --sku-name "Standard"
 
-          echo "✅ Deployment task complete."
+          echo "Deployment task complete."
 
-      - name: 🧩 Run PowerShell PR Review Script
+      - name: Run PowerShell PR Review Script
         shell: pwsh
         env:
           OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
@@ -75,25 +74,24 @@ jobs:
         run: |
           pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
 
-  # ============================================================
-  # JOB 2: Post-Merge Pipeline (runs ONLY on pushes to main/master)
-  # ============================================================
   post_merge_pipeline:
+    name: Post-Merge Pipeline
     runs-on: ubuntu-latest
+    # only run this job on push to main or master
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
-      - name: 🛠️ Checkout main/master branch
+      - name: Checkout main/master branch
         uses: actions/checkout@v4
 
-      - name: 🔐 Azure Login for Post-Merge
+      - name: Azure Login for Post-Merge
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
 
-      - name: 🧪 Example: Run Full End-to-End Tests
-        run: echo "✅ Code merged. Running full integration and end-to-end tests..."
+      - name: Run Full End-to-End Tests
+        run: echo "Code merged. Running full integration and end-to-end tests..."
 
-      - name: 🚀 Example: Deploy to Staging Environment
-        run: echo "🚀 Deployment process started
+      - name: Deploy to Staging Environment
+        run: echo "Deployment process started for main/master branch!"
