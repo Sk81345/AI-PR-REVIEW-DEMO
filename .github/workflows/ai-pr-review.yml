@@ -1,39 +1,49 @@
 name: 🤖 AI Pull Request Review (PowerShell + RAG)
 
 on:
+  # ➡️ ADDED: Triggers on every push to master or main
+  push:
+    branches:
+    - main
+    - master
+
   pull_request:
     branches:
-      - main
-      - master
+    - main
+    - master
+
   workflow_dispatch:
+
 
 jobs:
   ai_pr_review:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
 
-      - name: Install Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sqlite3
-          pip install pylint
-          
-      - name: Run PowerShell PR Review Script
-        shell: pwsh
-        if: github.event_name == 'pull_request'
-        env:
-          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
+    - name: Install Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sqlite3
+        pip install pylint
+
+    - name: Run PowerShell PR Review Script
+      shell: pwsh
+      # ⚠️ CRITICAL: Only run the script if the trigger was a pull_request
+      # This prevents it from failing when run by 'push' or 'workflow_dispatch'
+      if: github.event_name == 'pull_request'
+      env:
+        OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
