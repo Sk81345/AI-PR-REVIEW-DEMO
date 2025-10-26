@@ -1,72 +1,104 @@
 name: 🤖 AI Pull Request Review (PowerShell + RAG)
 
 on:
+  # Trigger on Pull Requests targeting main or master
   pull_request:
     branches:
-    - main
-    - master
+      - main
+      - master
 
-# 🛑 Single Active PR Control 🛑
+  # Trigger on pushes (after merges) to main or master
+  push:
+    branches:
+      - main
+      - master
+
+# 🛑 Ensure single active PR review workflow per PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
+  # ============================================================
+  # 🧠 JOB 1: AI PR Review (runs ONLY on Pull Requests)
+  # ============================================================
   ai_pr_review:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
 
     permissions:
       contents: read
       pull-requests: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: 🛠️ Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # fetch all history for diff accuracy
 
-    # 🟢 Step 1: Setup Tools (Python, SQLite, Pylint)
-    - name: Setup Tools (Python, SQLite, Pylint)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3 python3-pip
-        sudo apt-get install -y sqlite3 # For DB logging
-        pip3 install pylint # For RAG/Context
+      - name: ⚙️ Setup Tools (Python, SQLite, Pylint)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip sqlite3
+          pip3 install pylint
 
-    # ⭐ Step 2: Login to Azure (CRITICAL: Required for subsequent 'az' commands)
-    - name: Azure Login for Deployment
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-        enable-AzPSSession: true
+      - name: 🔐 Azure Login for Deployment
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
 
-    # ⭐ Step 3: Deploy GPT-4o Model to Azure OpenAI#
-    - name: 🚀 Deploy GPT-4o Model
-      shell: bash
-      run: |
-        echo "Starting model deployment based on hardcoded values..."
-        # Verify login and set the subscription context explicitly.
-        az account show --query name -o tsv || true
-        az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
+      - name: 🚀 Deploy GPT-4o Model
+        shell: bash
+        run: |
+          echo "Starting model deployment based on hardcoded values..."
+          az account show --query name -o tsv || true
+          az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
 
-        az cognitiveservices account deployment create \
-          --resource-group RG \
-          --name expact \
-          --deployment-name gpt4o-deploy \
-          --model-name gpt-4o \
-          --model-version "2024-11-20" \
-          --model-format OpenAI \
-          --sku-capacity 1 \
-          --sku-name "Standard"
-        echo "Deployment task complete."
+          az cognitiveservices account deployment create \
+            --resource-group RG \
+            --name expact \
+            --deployment-name gpt4o-deploy \
+            --model-name gpt-4o \
+            --model-version "2024-11-20" \
+            --model-format OpenAI \
+            --sku-capacity 1 \
+            --sku-name "Standard"
 
-    # ⭐ Step 4: Run PowerShell PR Review Script (The main logic)
-    - name: Run PowerShell PR Review Script
-      shell: pwsh
-      if: github.event_name == 'pull_request'
-      env:
-        OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }} # Reverting to using the secret value
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        REPO: ${{ github.repository }}
-      run: pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
+          echo "✅ Deployment task complete."
+
+      - name: 🧩 Run PowerShell PR Review Script
+        shell: pwsh
+        env:
+          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
+
+  # ============================================================
+  # 🚀 JOB 2: Post-Merge Pipeline (runs ONLY on pushes to main/master)
+  # ============================================================
+  post_merge_pipeline:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
+    needs: [ai_pr_review]
+
+    steps:
+      - name: 🛠️ Checkout main/master branch
+        uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login for Post-Merge
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: 🧪 Example: Run Full End-to-End Tests
+        run: echo "✅ Code merged. Running full integration and end-to-end tests..."
+
+      - name: 🚀 Example: Deploy to Staging Environment
+        run: echo "🚀 Deployment process started for main/master branch!"
