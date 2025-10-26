@@ -1,34 +1,27 @@
 name: AI Pull Request Review (PowerShell + RAG)
 
 on:
-  # 🔄 Automatically trigger on Pull Requests
+  # Trigger on PR events targeting main/master
   pull_request:
     branches:
       - main
       - master
+    types: [opened, synchronize, reopened, closed]
 
-  # 🚀 Automatically trigger on pushes (after merges)
-  push:
-    branches:
-      - main
-      - master
-
-  # ▶️ Allow manual trigger from the Actions tab
+  # Manual run from Actions tab
   workflow_dispatch:
 
-# Ensure only one workflow run in progress for a given workflow/run-id
+# Prevent duplicate concurrent runs
 concurrency:
   group: "${{ github.workflow }}-${{ github.run_id }}"
   cancel-in-progress: true
 
 jobs:
-  # ============================================================
-  # JOB 1: AI PR Review (runs ONLY on Pull Requests)
-  # ============================================================
   ai_pr_review:
     name: AI PR Review
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
+    # run for PRs except closed ones (so it skips merged/closed PRs)
+    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
     permissions:
       contents: read
       pull-requests: write
@@ -82,16 +75,14 @@ jobs:
         run: |
           pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
 
-  # ============================================================
-  # JOB 2: Post-Merge Pipeline (runs ONLY on pushes to main/master)
-  # ============================================================
   post_merge_pipeline:
     name: Post-Merge Pipeline
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
+    # Run only when a PR is closed AND merged
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true }}
 
     steps:
-      - name: Checkout main/master branch
+      - name: Checkout merged branch
         uses: actions/checkout@v4
 
       - name: Azure Login for Post-Merge
@@ -104,4 +95,4 @@ jobs:
         run: echo "Code merged. Running full integration and end-to-end tests..."
 
       - name: Deploy to Staging Environment
-        run: echo "Deployment process started for main/master branch!"
+        run: echo "Deployment process started for merged PR!"
