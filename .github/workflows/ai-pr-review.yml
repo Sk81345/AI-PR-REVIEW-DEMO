@@ -1,24 +1,27 @@
 name: 🤖 AI Pull Request Review (PowerShell + RAG)
 
 on:
-  # ➡️ ADDED: Triggers on every push to master or main
-  push:
-    branches:
-    - main
-    - master
-    - test
-
   pull_request:
     branches:
     - main
     - master
-
-  workflow_dispatch:
-
+  push:
+    branches:
+    - test
+# 1. IMPLEMENT CONCURRENCY: Ensures only one PR is reviewed at a time.
+# New runs for the same PR will cancel the old run, preventing conflicts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   ai_pr_review:
     runs-on: ubuntu-latest
+
+    # 2. IMPLEMENT WRITE PERMISSIONS: CRITICAL for posting comments.
+    permissions:
+      contents: read
+      pull-requests: write # This grants the token permission to post comments
 
     steps:
     - name: Checkout code
@@ -32,14 +35,12 @@ jobs:
     - name: Install Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y sqlite3
+        sudo apt-get install -y sqlite3 # Install SQLite for the DB
         pip install pylint
 
     - name: Run PowerShell PR Review Script
       shell: pwsh
-      # ⚠️ CRITICAL: Only run the script if the trigger was a pull_request
-      # This prevents it from failing when run by 'push' or 'workflow_dispatch'
-
+      if: github.event_name == 'pull_request'
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

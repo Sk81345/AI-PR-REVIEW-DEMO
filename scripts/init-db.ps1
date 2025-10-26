@@ -4,6 +4,7 @@ $database = "ai_reviews.db"
 
 if (-not (Test-Path $database)) {
     Write-Host "📦 Creating SQLite database for AI reviews..."
+    # The runner already has the SQLite assembly reference, but we use Add-Type defensively.
     Add-Type -AssemblyName System.Data.SQLite
     $connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$database;Version=3;")
     $connection.Open()
@@ -15,6 +16,7 @@ if (-not (Test-Path $database)) {
         pr_number TEXT,
         file_name TEXT,
         review_summary TEXT,
+        # Ensure timestamp is recorded for ordering past reviews
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 "@
