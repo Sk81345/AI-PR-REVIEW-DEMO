@@ -49,7 +49,7 @@ jobs:
 
         az cognitiveservices account deployment create \
           --resource-group RG \
-          --name east123 \
+          --name expact \
           --deployment-name gpt4o-deploy \
           --model-name gpt-4o \
           --model-version "2024-11-20" \
