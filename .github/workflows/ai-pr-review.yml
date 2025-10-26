@@ -40,7 +40,7 @@ jobs:
 
     - name: Run PowerShell PR Review Script
       shell: pwsh
-      if: github.event_name == 'pull_request'
+
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
