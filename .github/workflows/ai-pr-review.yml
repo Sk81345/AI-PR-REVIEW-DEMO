@@ -1,4 +1,4 @@
-name: "🤖 AI Pull Request Review (PowerShell + RAG)"
+name: 🤖 AI Pull Request Review (PowerShell + RAG)
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ on:
       - main
       - master
 
-# Ensure only one workflow run in-progress for a given workflow/run-id
+# Ensure only one workflow run in progress for a given workflow/run-id
 concurrency:
   group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: true
@@ -27,24 +27,24 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: "🛠️ Checkout code"
+      - name: 🛠️ Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: "⚙️ Setup Tools (Python, SQLite, Pylint)"
+      - name: ⚙️ Setup Tools (Python, SQLite, Pylint)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip sqlite3
           pip3 install pylint
 
-      - name: "🔐 Azure Login for Deployment"
+      - name: 🔐 Azure Login for Deployment
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
 
-      - name: "🚀 Deploy GPT-4o Model"
+      - name: 🚀 Deploy GPT-4o Model
         shell: bash
         run: |
           echo "Starting model deployment based on hardcoded values..."
@@ -63,7 +63,7 @@ jobs:
 
           echo "✅ Deployment task complete."
 
-      - name: "🧩 Run PowerShell PR Review Script"
+      - name: 🧩 Run PowerShell PR Review Script
         shell: pwsh
         env:
           OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
@@ -83,17 +83,17 @@ jobs:
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
-      - name: "🛠️ Checkout main/master branch"
+      - name: 🛠️ Checkout main/master branch
         uses: actions/checkout@v4
 
-      - name: "🔐 Azure Login for Post-Merge"
+      - name: 🔐 Azure Login for Post-Merge
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           enable-AzPSSession: true
 
-      - name: "🧪 Example: Run Full End-to-End Tests"
+      - name: 🧪 Example: Run Full End-to-End Tests
         run: echo "✅ Code merged. Running full integration and end-to-end tests..."
 
-      - name: "🚀 Example: Deploy to Staging Environment"
-        run: echo "🚀 Deployment process started for main/master branch!"
+      - name: 🚀 Example: Deploy to Staging Environment
+        run: echo "🚀 Deployment process started
