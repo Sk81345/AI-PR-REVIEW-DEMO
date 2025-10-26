@@ -1,28 +1,23 @@
-# scripts/init_db.ps1
-# Initializes SQLite database for PR logs
-$database = "ai_reviews.db"
+# $ErrorActionPreference = "Stop"
 
-if (-not (Test-Path $database)) {
-    Write-Host "📦 Creating SQLite database for AI reviews..."
-    # The runner already has the SQLite assembly reference, but we use Add-Type defensively.
-    Add-Type -AssemblyName System.Data.SQLite
-    $connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$database;Version=3;")
-    $connection.Open()
+# Write-Host "📦 Creating SQLite database for AI reviews..."
+# # Load the SQLite Assembly
+# Add-Type -AssemblyName System.Data.SQLite
+# $connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=ai_reviews.db")
+# $connection.Open()
 
-    $cmd = $connection.CreateCommand()
-    $cmd.CommandText = @"
-    CREATE TABLE IF NOT EXISTS reviews (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pr_number TEXT,
-        file_name TEXT,
-        review_summary TEXT,
-        # Ensure timestamp is recorded for ordering past reviews
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-"@
-    $cmd.ExecuteNonQuery()
-    $connection.Close()
-    Write-Host "✅ Database initialized."
-} else {
-    Write-Host "✅ Database already exists."
-}
+# # Create the reviews table if it doesn't exist
+# $cmd = $connection.CreateCommand()
+# $cmd.CommandText = @"
+# CREATE TABLE IF NOT EXISTS reviews (
+#     id INTEGER PRIMARY KEY AUTOINCREMENT,
+#     pr_number INTEGER NOT NULL,
+#     file_name TEXT NOT NULL,
+#     review TEXT,
+#     created_at TEXT NOT NULL
+# );
+# "@
+# $cmd.ExecuteNonQuery()
+
+# $connection.Close()
+# Write-Host "✅ Database initialized."

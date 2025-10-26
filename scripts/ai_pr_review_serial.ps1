@@ -36,9 +36,9 @@ if (-not $pythonFiles) {
 
 # 3️⃣ Initialize SQLite DB
 . ./scripts/init_db.ps1
-Add-Type -AssemblyName System.Data.SQLite
-$connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=ai_reviews.db;Version=3;")
-$connection.Open()
+#Add-Type -AssemblyName System.Data.SQLite
+#$connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=ai_reviews.db;Version=3;")
+#$connection.Open()
 
 foreach ($file in $pythonFiles) {
     $fileName = $file.filename
@@ -119,14 +119,14 @@ If you find no issues, state 'No issues found. LGTM.'
     # 6️⃣ Save to DB and Post Comment
 
     # 🗃️ Save to DB
-    $cmd = $connection.CreateCommand()
-    # Note: We use the correct column name 'timestamp' here
-    $cmd.CommandText = "INSERT INTO reviews (pr_number, file_name, review_summary) VALUES (@pr, @file, @review)"
-    $cmd.Parameters.AddWithValue("@pr", $PR_NUMBER) | Out-Null
-    $cmd.Parameters.AddWithValue("@file", $fileName) | Out-Null
-    $cmd.Parameters.AddWithValue("@review", $review) | Out-Null
-    $cmd.ExecuteNonQuery()
-    Write-Host "🗃️ Review summary logged to SQLite DB."
+    #$cmd = $connection.CreateCommand()
+    ## Note: We use the correct column name 'timestamp' here
+    #$cmd.CommandText = "INSERT INTO reviews (pr_number, file_name, review_summary) VALUES (@pr, @file, @review)"
+    #$cmd.Parameters.AddWithValue("@pr", $PR_NUMBER) | Out-Null
+    #$cmd.Parameters.AddWithValue("@file", $fileName) | Out-Null
+    #$cmd.Parameters.AddWithValue("@review", $review) | Out-Null
+    #$cmd.ExecuteNonQuery()
+    #Write-Host "🗃️ Review summary logged to SQLite DB."
 
     # 💬 Comment back to PR
     $commentUri = "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
@@ -137,5 +137,5 @@ If you find no issues, state 'No issues found. LGTM.'
     Write-Host "💬 Comment posted for $fileName"
 }
 
-$connection.Close()
+#$connection.Close()
 Write-Host "🎯 All reviews completed and logged to DB."
