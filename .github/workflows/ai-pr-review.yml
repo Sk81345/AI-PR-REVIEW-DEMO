@@ -5,9 +5,9 @@ on:
     branches:
     - main
     - master
-  push:
-    branches:
-    - test
+  # push:
+  #   branches:
+  #   - test
 # 1. IMPLEMENT CONCURRENCY: Ensures only one PR is reviewed at a time.
 # New runs for the same PR will cancel the old run, preventing conflicts.
 concurrency:
@@ -40,7 +40,7 @@ jobs:
 
     - name: Run PowerShell PR Review Script
       shell: pwsh
-
+      if: github.event_name == 'pull_request'
       env:
         OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
