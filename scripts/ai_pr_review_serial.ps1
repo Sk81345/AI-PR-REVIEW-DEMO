@@ -137,5 +137,5 @@ If you find no issues, state 'No issues found. LGTM.'
     Write-Host "💬 Comment posted for $fileName"
 }
 
-$connection.Close()
+#$connection.Close()
 Write-Host "🎯 All reviews completed and logged to DB."
