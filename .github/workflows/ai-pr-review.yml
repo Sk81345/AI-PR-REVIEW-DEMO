@@ -38,7 +38,7 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         enable-AzPSSession: true
 
-    # ⭐ Step 3: Deploy GPT-4o Model to Azure OpenAI
+    # ⭐ Step 3: Deploy GPT-4o Model to Azure OpenAI#
     - name: 🚀 Deploy GPT-4o Model
       shell: bash
       run: |
