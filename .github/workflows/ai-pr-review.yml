@@ -1,28 +1,33 @@
 name: AI Pull Request Review (PowerShell + RAG)
 
 on:
+  # 🔄 Automatically trigger on Pull Requests
   pull_request:
     branches:
       - main
       - master
+
+  # 🚀 Automatically trigger on pushes (after merges)
   push:
     branches:
       - main
       - master
 
-# 🛑 Single Active PR Control 🛑
+  # ▶️ Allow manual trigger from the Actions tab
+  workflow_dispatch:
+
+# Ensure only one workflow run in progress for a given workflow/run-id
 concurrency:
-  # Uses the PR number for PR events to ensure only the latest commit is reviewed.
-  # Uses the run ID for push events (merges).
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: "${{ github.workflow }}-${{ github.run_id }}"
   cancel-in-progress: true
 
 jobs:
-  # JOB 1: AI PR Review (Runs ONLY on Pull Requests)
+  # ============================================================
+  # JOB 1: AI PR Review (runs ONLY on Pull Requests)
+  # ============================================================
   ai_pr_review:
     name: AI PR Review
     runs-on: ubuntu-latest
-    # Only run this job for pull_request events
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
@@ -77,14 +82,12 @@ jobs:
         run: |
           pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
 
-  # JOB 2: Post-Merge Pipeline (Runs ONLY on Push to main/master)
+  # ============================================================
+  # JOB 2: Post-Merge Pipeline (runs ONLY on pushes to main/master)
+  # ============================================================
   post_merge_pipeline:
     name: Post-Merge Pipeline
     runs-on: ubuntu-latest
-    # CRITICAL FIX: Add needs dependency to link the jobs and help the parser
-    needs: ai_pr_review
-    
-    # Only run this job on push to main or master
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
