@@ -23,7 +23,7 @@ jobs:
     name: AI PR Review
     runs-on: ubuntu-latest
     # run for PRs except closed ones (so it skips merged/closed PRs)
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
     permissions:
       contents: write
       pull-requests: write
