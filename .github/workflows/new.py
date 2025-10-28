@@ -1,4 +1,4 @@
-"""A simple Python script that greets the user."""
+"""A simple t Python script that greets the user."""
 
 def greet(name: str) -> None:
     """Print a personalized greeting."""
