@@ -79,7 +79,12 @@ foreach ($file in $pythonFiles) {
         $review  = $resp.choices[0].message.content
         Write-Host "✅ AI Review done for $fileName"
     } catch {
-        Write-Host "⚠️ AI review failed for $fileName: $($_.Exception.Message)"
+        Write-Host "⚠️ AI review failed for $($fileName): $($_.Exception.Message)"
+        # Optional: post a failure comment to PR
+        $errorComment = @{
+            body = "⚠️ **AI Review Error:** Failed to analyze `$fileName`. Error: $($_.Exception.Message)"
+        } | ConvertTo-Json
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" -Headers $headersGH -Method Post -Body $errorComment
         continue
     }
 
@@ -127,6 +132,10 @@ else {
         }
     } catch {
         Write-Host "❌ Merge failed: $($_.Exception.Message)"
+        $mergeError = @{
+            body = "❌ **AI Auto-Merge Failed:** $($_.Exception.Message)"
+        } | ConvertTo-Json
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" -Headers $headersGH -Method Post -Body $mergeError
     }
 }
 
