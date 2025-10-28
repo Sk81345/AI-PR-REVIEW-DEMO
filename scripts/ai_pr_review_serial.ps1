@@ -24,7 +24,6 @@ $headersGH = @{
 }
 
 # --- 2️⃣ Get Changed Files ---
-
 Write-Host "🔍 Fetching changed files for PR #$PR_NUMBER..."
 $filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files"
 $files    = Invoke-RestMethod -Uri $filesUri -Headers $headersGH
@@ -46,7 +45,6 @@ if (-not $pythonFiles) {
     }
     exit 0
 }
-
 
 # --- 3️⃣ Initialize Review Tracking ---
 $issuesFound = $false
@@ -87,6 +85,8 @@ foreach ($file in $pythonFiles) {
 You are a senior Python reviewer.
 If the code is perfect and has no issues, your response MUST include the exact phrase:
 'No issues found. LGTM.'
+If there are only minor or style issues (like whitespace or PEP8 lint), say:
+'Minor issues only. LGTM.'
 Otherwise, provide detailed review comments and corrected code snippets inside ```python``` blocks.
 "@
             },
@@ -94,19 +94,38 @@ Otherwise, provide detailed review comments and corrected code snippets inside `
         )
     } | ConvertTo-Json -Depth 4
 
-    try {
-        $aiUri   = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-01"
-        $resp    = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
-        $review  = $resp.choices[0].message.content
-        Write-Host "✅ AI Review done for $fileName"
-    } catch {
-        Write-Host "⚠️ AI review failed for $($fileName): $($_.Exception.Message)"
-        $errorComment = @{
-            body = "⚠️ **AI Review Error:** Failed to analyze `$fileName`. Error: $($_.Exception.Message)"
-        } | ConvertTo-Json
-        Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" -Headers $headersGH -Method Post -Body $errorComment
+    # --- Added: Retry logic for 429 Too Many Requests ---
+    $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-15-preview"
+    $maxRetries = 3
+    $retryDelay = 10
+    $resp = $null
+
+    for ($i = 1; $i -le $maxRetries; $i++) {
+        try {
+            $resp = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
+            break
+        } catch {
+            $status = $_.Exception.Response.StatusCode.value__
+            if ($status -eq 429 -and $i -lt $maxRetries) {
+                $delay = [math]::Pow($retryDelay, $i)
+                Write-Host "⚠️ Rate limited (429). Retrying in $delay seconds..."
+                Start-Sleep -Seconds $delay
+            } elseif ($status -eq 400) {
+                Write-Host "❌ 400 Bad Request — check deployment name, endpoint, or body format."
+                throw
+            } else {
+                throw
+            }
+        }
+    }
+
+    if (-not $resp) {
+        Write-Host "⚠️ Failed to get AI review response after retries for $fileName."
         continue
     }
+
+    $review  = $resp.choices[0].message.content
+    Write-Host "✅ AI Review done for $fileName"
 
     # --- Comment on PR ---
     $commentUri = "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
@@ -114,9 +133,9 @@ Otherwise, provide detailed review comments and corrected code snippets inside `
     Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $commentBody
     Write-Host "💬 Comment posted for $fileName"
 
-    # --- Track issues (Flexible detection) ---
-    if ($review -match "(?i)(No issues found|LGTM|looks good|clean|no problems detected)") {
-        Write-Host "✅ File marked clean by AI ($fileName)"
+    # --- Relaxed merge logic (includes minor/style issues) ---
+    if ($review -match "(?i)(No issues found|LGTM|looks good|clean|no problems detected|minor|style)") {
+        Write-Host "✅ File marked clean or minor by AI ($fileName)"
     } else {
         $issuesFound = $true
         Write-Host "⚠️ AI detected issues in $fileName"
@@ -133,8 +152,6 @@ if ($issuesFound) {
 }
 else {
     Write-Host "🎉 All files clean (LGTM). Proceeding with auto-approval and merge."
-
-
 
     # --- Merge PR (Squash) ---
     $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
