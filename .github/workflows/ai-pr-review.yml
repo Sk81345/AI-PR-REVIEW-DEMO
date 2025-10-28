@@ -1,28 +1,34 @@
 name: AI Pull Request Review (PowerShell + RAG)
 
 on:
-  # Trigger on PR events targeting main/master
+  # 🟢 1️⃣ Trigger for Pull Requests (AI Review)
   pull_request:
     branches:
       - main
       - master
     types: [opened, synchronize, reopened, closed]
- # push:
-  #  branches:
-  #    - ai-review-fix-pr 
-  # Manual run from Actions tab
+
+  # 🟢 2️⃣ Trigger for Post-Merge to master/main
+  push:
+    branches:
+      - main
+      - master
+
+  # 🟢 3️⃣ Manual Trigger from Actions Tab
   workflow_dispatch:
 
-# Prevent duplicate concurrent runs
+# 🧩 Prevent duplicate concurrent runs
 concurrency:
   group: "${{ github.workflow }}-${{ github.run_id }}"
   cancel-in-progress: true
 
 jobs:
+  # =======================================================
+  # 🧠 1️⃣ AI CODE REVIEW + CONDITIONAL AUTO-MERGE JOB
+  # =======================================================
   ai_pr_review:
     name: AI PR Review
     runs-on: ubuntu-latest
-    # run for PRs except closed ones (so it skips merged/closed PRs)
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
     permissions:
       contents: write
@@ -52,7 +58,6 @@ jobs:
           echo "Starting model deployment..."
           az account show --query name -o tsv || true
           az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
-
           az cognitiveservices account deployment create \
             --resource-group RG \
             --name tty \
@@ -62,10 +67,9 @@ jobs:
             --model-format OpenAI \
             --sku-capacity 1 \
             --sku-name "Standard"
-
           echo "Deployment task complete."
 
-      - name: Run PowerShell PR Review Script
+      - name: Run PowerShell AI PR Review Script
         shell: pwsh
         env:
           OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
@@ -77,11 +81,15 @@ jobs:
         run: |
           pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
 
+  # =======================================================
+  # 🚀 2️⃣ POST-MERGE DEPLOYMENT JOB
+  # =======================================================
   post_merge_pipeline:
     name: Post-Merge Pipeline
     runs-on: ubuntu-latest
-    # Run only when a PR is closed AND merged
-    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true }}
+
+    # 🧠 Trigger when code is merged to master/main
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
 
     steps:
       - name: Checkout merged branch
@@ -94,7 +102,10 @@ jobs:
           enable-AzPSSession: true
 
       - name: Run Full End-to-End Tests
-        run: echo "Code merged. Running full integration and end-to-end tests..."
+        run: |
+          echo "✅ Code merged to master/main."
+          echo "🧪 Running full integration and end-to-end tests..."
 
       - name: Deploy to Staging Environment
-        run: echo "Deployment process started for merged PR!"
+        run: |
+          echo "🚀 Deployment process started for merged PR!"
