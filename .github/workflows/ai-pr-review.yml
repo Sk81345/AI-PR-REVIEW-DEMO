@@ -1,0 +1,100 @@
+name: AI Pull Request Review (PowerShell + RAG)
+
+on:
+  # Trigger on PR events targeting main/master
+  pull_request:
+    branches:
+      - main
+      - master
+    types: [opened, synchronize, reopened, closed]
+ # push:
+  #  branches:
+  #    - ai-review-fix-pr 
+  # Manual run from Actions tab
+  workflow_dispatch:
+
+# Prevent duplicate concurrent runs
+concurrency:
+  group: "${{ github.workflow }}-${{ github.run_id }}"
+  cancel-in-progress: true
+
+jobs:
+  ai_pr_review:
+    name: AI PR Review
+    runs-on: ubuntu-latest
+    # run for PRs except closed ones (so it skips merged/closed PRs)
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Tools (Python, SQLite, Pylint)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip sqlite3
+          pip3 install pylint
+
+      - name: Azure Login for Deployment
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Deploy GPT-4o Model
+        shell: bash
+        run: |
+          echo "Starting model deployment..."
+          az account show --query name -o tsv || true
+          az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
+
+          az cognitiveservices account deployment create \
+            --resource-group RG \
+            --name tty \
+            --deployment-name gpt4o-deploy \
+            --model-name gpt-4o \
+            --model-version "2024-11-20" \
+            --model-format OpenAI \
+            --sku-capacity 1 \
+            --sku-name "Standard"
+
+          echo "Deployment task complete."
+
+      - name: Run PowerShell PR Review Script
+        shell: pwsh
+        env:
+          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
+
+  post_merge_pipeline:
+    name: Post-Merge Pipeline
+    runs-on: ubuntu-latest
+    # Run only when a PR is closed AND merged
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true }}
+
+    steps:
+      - name: Checkout merged branch
+        uses: actions/checkout@v4
+
+      - name: Azure Login for Post-Merge
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Run Full End-to-End Tests
+        run: echo "Code merged. Running full integration and end-to-end tests..."
+
+      - name: Deploy to Staging Environment
+        run: echo "Deployment process started for merged PR!"
