@@ -120,14 +120,7 @@ if ($issuesFound) {
 else {
     Write-Host "🎉 All files clean (LGTM). Proceeding with auto-approval and merge."
 
-    # --- Approve PR ---
-    $reviewUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/reviews"
-    $approveBody = @{
-        event = "APPROVE"
-        body  = "🤖 AI Review: All checks passed. Automatically approving and merging."
-    } | ConvertTo-Json
-    Invoke-RestMethod -Uri $reviewUri -Headers $headersGH -Method Post -Body $approveBody
-    Write-Host "✅ PR approved by AI."
+
 
     # --- Merge PR (Squash) ---
     $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
