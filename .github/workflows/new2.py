@@ -1,2 +1,5 @@
-name = "World"
-print(f"Hello, {name}!")
+"""This module prints a greeting message."""
+
+NAME = "World"
+
+print(f"Hello, {NAME}!")
