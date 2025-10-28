@@ -24,15 +24,29 @@ $headersGH = @{
 }
 
 # --- 2️⃣ Get Changed Files ---
+
 Write-Host "🔍 Fetching changed files for PR #$PR_NUMBER..."
 $filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files"
 $files    = Invoke-RestMethod -Uri $filesUri -Headers $headersGH
 $pythonFiles = $files | Where-Object { $_.filename -like "*.py" }
 
 if (-not $pythonFiles) {
-    Write-Host "⚠️ No Python files changed. Exiting."
+    Write-Host "⚠️ No Python files changed. Marking PR as clean and merging."
+    $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
+    $mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
+    try {
+        $mergeResponse = Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
+        if ($mergeResponse.merged) {
+            Write-Host "🚀 PR successfully merged by AI (no Python files)."
+        } else {
+            Write-Host "⚠️ Merge API returned but merge failed: $($mergeResponse.message)"
+        }
+    } catch {
+        Write-Host "❌ Merge failed: $($_.Exception.Message)"
+    }
     exit 0
 }
+
 
 # --- 3️⃣ Initialize Review Tracking ---
 $issuesFound = $false
