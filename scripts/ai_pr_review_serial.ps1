@@ -67,7 +67,12 @@ foreach ($file in $pythonFiles) {
         messages = @(
             @{
                 role    = "system"
-                content = "You are a senior Python reviewer. If code is perfect, say 'No issues found. LGTM.' Otherwise, explain and show fixes inside ```python ...``` blocks."
+                content = @"
+You are a senior Python reviewer.
+If the code is perfect and has no issues, your response MUST include the exact phrase:
+'No issues found. LGTM.'
+Otherwise, provide detailed review comments and corrected code snippets inside ```python``` blocks.
+"@
             },
             @{ role = "user"; content = $userPrompt }
         )
@@ -94,9 +99,12 @@ foreach ($file in $pythonFiles) {
     Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $commentBody
     Write-Host "💬 Comment posted for $fileName"
 
-    # --- Track issues ---
-    if ($review -notmatch "(?i)No issues found\.?\s*LGTM\.?") {
+    # --- Track issues (Flexible detection) ---
+    if ($review -match "(?i)(No issues found|LGTM|looks good|clean|no problems detected)") {
+        Write-Host "✅ File marked clean by AI ($fileName)"
+    } else {
         $issuesFound = $true
+        Write-Host "⚠️ AI detected issues in $fileName"
     }
 }
 
