@@ -54,7 +54,7 @@ jobs:
           az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
           az cognitiveservices account deployment create \
             --resource-group RG \
-            --name tty \
+            --name rrrt \
             --deployment-name gpt4o-deploy \
             --model-name gpt-4o \
             --model-version "2024-11-20" \
