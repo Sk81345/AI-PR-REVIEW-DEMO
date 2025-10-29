@@ -1,6 +1,6 @@
 """This module finds the largest number in a list and prints the result."""
 
-def find_max(numbers: list[int]) -> int:
+def (numbers: list[int]) -> int:
     """Return the largest number in the given list."""
     return max(numbers)
 
