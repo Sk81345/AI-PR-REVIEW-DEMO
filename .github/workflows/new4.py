@@ -3,7 +3,7 @@
 def factorial(n: int) -> int:
     """Return the factorial of a given non-negative integer."""
     return 1 if n <= 1 else n * factorial(n - 1)
-
+teste
 
 if __name__ == "__main__":
     number = 5
