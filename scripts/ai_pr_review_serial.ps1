@@ -63,17 +63,22 @@ foreach ($file in $reviewFiles) {
     }
 
     # --- RAG Filters ---
-    $lines = $content -split "`n"
-    if ($lines.Count -gt 40) {
-        Write-Host "[SKIP] $fileName (more than 40 lines per RAG rule)."
-        $index++
-        continue
-    }
-    if ($content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])") {
-        Write-Host "[SKIP] $fileName (possible secret detected)."
-        $index++
-        continue
-    }
+
+        $lines = $content -split "`n"
+        if ($lines.Count -gt 40) {
+            Write-Host "🚫 $fileName skipped (more than 40 lines per RAG rule). Marking as issue."
+            $issuesFound = $true
+            $reviewSummary += "⚠️ $fileName — Skipped due to exceeding 40-line RAG rule (manual review needed)."
+            $index++
+            continue
+        }
+        if ($content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])") {
+            Write-Host "🚫 $fileName skipped (possible secret detected). Marking as issue."
+            $issuesFound = $true
+            $reviewSummary += "⚠️ $fileName — Skipped due to potential secret detected (manual review required)."
+            $index++
+            continue
+        }
 
     # --- Lint & Syntax ---
     $tmpFile = "tmp_$($fileName -replace '[\\/]', '_')"
