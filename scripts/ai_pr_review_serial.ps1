@@ -23,20 +23,19 @@ $headersGH = @{
     "Accept"        = "application/vnd.github+json"
 }
 
-# --- 2️⃣ Fetch PR changed files (all modified + new) ---
-Write-Host "🔍 Fetching changed files for PR #$PR_NUMBER..."
+# --- 2️⃣ Fetch PR changed files ---
+Write-Host "[INFO] Fetching changed files for PR #$PR_NUMBER..."
 $filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"
 $files = Invoke-RestMethod -Uri $filesUri -Headers $headersGH
 if (-not $files) {
-    Write-Host "❌ No files found in PR."
+    Write-Host "[ERROR] No files found in PR."
     exit 1
 }
 
-# include all new + modified files, exclude deleted
 $reviewFiles = $files | Where-Object { $_.status -ne "removed" -and $_.filename -like "*.py" }
 
 if (-not $reviewFiles) {
-    Write-Host "⚠️ No Python files found. Skipping AI review, merging directly."
+    Write-Host "[INFO] No Python files found. Skipping AI review, merging directly."
     $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
     $mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
     Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
@@ -46,28 +45,33 @@ if (-not $reviewFiles) {
 # --- 3️⃣ Review loop ---
 $issuesFound = $false
 $reviewSummary = @()
+$totalFiles = $reviewFiles.Count
+$index = 1
 
 foreach ($file in $reviewFiles) {
     $fileName = $file.filename
     $rawUrl   = $file.raw_url
 
-    Write-Host "`n📄 Reviewing file: $fileName"
+    Write-Host ""
+    Write-Host "[INFO] [$index/$totalFiles] Starting AI review for file: $fileName"
 
     try {
         $content = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent"="ai-review" }
     } catch {
-        Write-Host "⚠️ Could not fetch file: $fileName"
+        Write-Host "[WARN] Could not fetch file: $fileName"
         continue
     }
 
     # --- RAG Filters ---
     $lines = $content -split "`n"
     if ($lines.Count -gt 40) {
-        Write-Host "⏭️ Skipping $fileName (more than 40 lines per RAG rule)."
+        Write-Host "[SKIP] $fileName (more than 40 lines per RAG rule)."
+        $index++
         continue
     }
     if ($content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])") {
-        Write-Host "⏭️ Skipping $fileName (possible secret detected)."
+        Write-Host "[SKIP] $fileName (possible secret detected)."
+        $index++
         continue
     }
 
@@ -102,12 +106,11 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
             @{ role = "system"; content = "You are a senior Python reviewer. Be concise and accurate." },
             @{ role = "user"; content = $prompt }
         )
-        max_tokens = 300  # ✅ Limit token size to avoid overusing quota
+        max_tokens = 300
     } | ConvertTo-Json -Depth 5
 
     $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-15-preview"
 
-    # --- Robust Retry Logic (Microsoft best practice) ---
     $maxRetries = 5
     $retryDelay = 10
     $resp = $null
@@ -120,10 +123,10 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
             $status = $_.Exception.Response.StatusCode.value__
             if ($status -eq 429 -and $i -lt $maxRetries) {
                 $delay = $retryDelay * $i
-                Write-Host "⚠️ Rate limited (429). Waiting $delay seconds before retry $i..."
+                Write-Host "[WARN] Rate limited (429). Waiting $delay seconds before retry $i..."
                 Start-Sleep -Seconds $delay
             } else {
-                Write-Host "❌ AI request failed: $($_.Exception.Message)"
+                Write-Host ("[ERROR] AI request failed for {0}: {1}" -f $fileName, $_.Exception.Message)
                 break
             }
         }
@@ -133,29 +136,33 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
         $review = "⚠️ AI failed after retries for $fileName."
     } else {
         $review = $resp.choices[0].message.content
-        Write-Host "🤖 AI review complete for $fileName"
+        Write-Host "[AI] Review complete for $fileName"
     }
 
-    # --- Post AI comment ---
+    # --- Post AI comment with file info ---
     $commentUri = "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
-    $commentBody = @{ body = "🤖 **AI Review for `$fileName`**:`n`n$review" } | ConvertTo-Json
+    $commentBody = @{
+        body = "🤖 **AI Review for file `$($fileName)` ($index of $totalFiles)**`n`n$review`n`n---`n📄 *Next file will be reviewed automatically...*"
+    } | ConvertTo-Json
     try {
         Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $commentBody
-        Write-Host "💬 Comment posted for $fileName"
+        Write-Host "[INFO] Comment posted for $fileName ($index of $totalFiles)"
     } catch {
-        Write-Host "⚠️ Could not post comment for $fileName"
+        Write-Host "[WARN] Could not post comment for $fileName"
     }
 
     # --- Track issues for summary ---
-    if ($review -match "(?i)(No issues found|LGTM|Minor issues only)") {
+    if ($review -match "(?i)(No issues found\. LGTM\.|Minor issues only\. LGTM\.)") {
+        Write-Host "[INFO] Clean result detected for $fileName"
         $reviewSummary += "✅ $fileName — Clean or minor issues only."
     } else {
         $issuesFound = $true
+        Write-Host "[WARN] Issues detected in $fileName"
         $reviewSummary += "⚠️ $fileName — Issues found, see AI comments."
     }
 
-    # ✅ Smooth pacing (avoid burst requests)
     Start-Sleep -Seconds 2
+    $index++
 }
 
 # --- 4️⃣ Final Summary Comment ---
@@ -173,21 +180,21 @@ Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/com
 
 # --- 5️⃣ Merge Decision ---
 if ($issuesFound) {
-    Write-Host "🚫 Issues detected, skipping merge."
+    Write-Host "[INFO] Issues detected, skipping merge."
     exit 0
 }
 
 # --- Merge Clean PR ---
-Write-Host "🎉 All clean — proceeding with auto-merge."
+Write-Host "[INFO] All files clean — proceeding with auto-merge."
 $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
 $mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
 try {
     $mergeResponse = Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
     if ($mergeResponse.merged) {
-        Write-Host "🚀 PR successfully merged by AI."
+        Write-Host "[SUCCESS] 🚀 PR successfully merged by AI."
     } else {
-        Write-Host "⚠️ Merge failed: $($mergeResponse.message)"
+        Write-Host "[WARN] Merge failed: $($mergeResponse.message)"
     }
 } catch {
-    Write-Host "❌ Merge failed: $($_.Exception.Message)"
+    Write-Host "[ERROR] Merge failed: $($_.Exception.Message)"
 }
