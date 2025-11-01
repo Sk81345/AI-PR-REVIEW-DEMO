@@ -115,7 +115,7 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
     $retryDelay = 10
     $resp = $null
 
-    for ($i = 1; $i -le $maxRetries; $i++) {
+     for ($i = 1; $i -le $maxRetries; $i++) {
         try {
             $resp = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
             break
@@ -126,11 +126,13 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
                 Write-Host "⚠️ Rate limited (429). Waiting $delay seconds before retry $i..."
                 Start-Sleep -Seconds $delay
             } else {
-                Write-Host "❌ AI request failed for $fileName: $($_.Exception.Message)"
+                # ✅ fixed variable reference
+                Write-Host ("❌ AI request failed for {0}: {1}" -f $fileName, $_.Exception.Message)
                 break
             }
         }
     }
+
 
     if (-not $resp) {
         $review = "⚠️ AI failed after retries for $fileName."
