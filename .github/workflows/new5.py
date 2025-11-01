@@ -3,7 +3,7 @@
 def celsius_to_fahrenheit(celsius: float) -> float:
     """Return the temperature converted from Celsius to Fahrenheit."""
     return (celsius * 9 / 5) + 32
-tstttt
+
 
 if __name__ == "__main__":
     temp_c = 25.0
