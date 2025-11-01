@@ -1,5 +1,4 @@
 # broken_logic.py
-from typing import Union
 
 
 def calculate_discount(price: float, discount: float) -> float:
@@ -7,7 +6,7 @@ def calculate_discount(price: float, discount: float) -> float:
     Calculate the discounted price.
     Ensures discount is between 0 and 100.
     """
-    if not (0 <= discount <= 100):
+    if not 0 <= discount <= 100:
         raise ValueError("Discount must be between 0 and 100.")
 
     discounted_price = price - (price * discount / 100)
@@ -25,8 +24,8 @@ def buggy_function() -> None:
     """
     for i in range(5):
         print(i)
-    result = f"{i + 5}"  # convert to string safely
-    print(f"Final result: {result}")
+    final_result = f"{i + 5}"  # renamed to avoid shadowing
+    print(f"Final result: {final_result}")
 
 
 if __name__ == "__main__":
@@ -35,5 +34,7 @@ if __name__ == "__main__":
         print(f"Discounted price: {result}")
         greet_user("Shyam")
         buggy_function()
+    except ValueError as ve:
+        print(f"Value error: {ve}")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Unexpected error: {e}")
