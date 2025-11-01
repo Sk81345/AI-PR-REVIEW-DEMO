@@ -23,7 +23,7 @@ $headersGH = @{
     "Accept"        = "application/vnd.github+json"
 }
 
-# --- 2️⃣ Fetch PR changed files (all modified + new) ---
+# --- 2️⃣ Fetch PR changed files ---
 Write-Host "🔍 Fetching changed files for PR #$PR_NUMBER..."
 $filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"
 $files = Invoke-RestMethod -Uri $filesUri -Headers $headersGH
@@ -32,7 +32,6 @@ if (-not $files) {
     exit 1
 }
 
-# include all new + modified files, exclude deleted
 $reviewFiles = $files | Where-Object { $_.status -ne "removed" -and $_.filename -like "*.py" }
 
 if (-not $reviewFiles) {
@@ -46,12 +45,15 @@ if (-not $reviewFiles) {
 # --- 3️⃣ Review loop ---
 $issuesFound = $false
 $reviewSummary = @()
+$totalFiles = $reviewFiles.Count   # 🆕 Count total for progress messages
+$index = 1
 
 foreach ($file in $reviewFiles) {
     $fileName = $file.filename
     $rawUrl   = $file.raw_url
 
-    Write-Host "`n📄 Reviewing file: $fileName"
+    Write-Host ""
+    Write-Host "📄 [$index/$totalFiles] Starting review for file: $fileName"  # 🆕 Improved progress logging
 
     try {
         $content = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent"="ai-review" }
@@ -64,10 +66,12 @@ foreach ($file in $reviewFiles) {
     $lines = $content -split "`n"
     if ($lines.Count -gt 40) {
         Write-Host "⏭️ Skipping $fileName (more than 40 lines per RAG rule)."
+        $index++
         continue
     }
     if ($content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])") {
         Write-Host "⏭️ Skipping $fileName (possible secret detected)."
+        $index++
         continue
     }
 
@@ -102,12 +106,11 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
             @{ role = "system"; content = "You are a senior Python reviewer. Be concise and accurate." },
             @{ role = "user"; content = $prompt }
         )
-        max_tokens = 300  # ✅ Limit token size to avoid overusing quota
+        max_tokens = 300
     } | ConvertTo-Json -Depth 5
 
     $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-15-preview"
 
-    # --- Robust Retry Logic (Microsoft best practice) ---
     $maxRetries = 5
     $retryDelay = 10
     $resp = $null
@@ -123,7 +126,7 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
                 Write-Host "⚠️ Rate limited (429). Waiting $delay seconds before retry $i..."
                 Start-Sleep -Seconds $delay
             } else {
-                Write-Host "❌ AI request failed: $($_.Exception.Message)"
+                Write-Host "❌ AI request failed for $fileName: $($_.Exception.Message)"
                 break
             }
         }
@@ -133,20 +136,21 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
         $review = "⚠️ AI failed after retries for $fileName."
     } else {
         $review = $resp.choices[0].message.content
-        Write-Host "🤖 AI review complete for $fileName"
+        Write-Host "🤖 Finished AI review for $fileName"
     }
 
-    # --- Post AI comment ---
+    # --- Post AI comment with file info 🆕 ---
     $commentUri = "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
-    $commentBody = @{ body = "🤖 **AI Review for `$fileName`**:`n`n$review" } | ConvertTo-Json
+    $commentBody = @{
+        body = "🤖 **AI Review for file `$fileName` ($index of $totalFiles)**`n`n$review`n`n---`n📄 *Next file will be reviewed automatically...*"
+    } | ConvertTo-Json
     try {
         Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $commentBody
-        Write-Host "💬 Comment posted for $fileName"
+        Write-Host "💬 Comment posted for $fileName (File $index of $totalFiles)"
     } catch {
         Write-Host "⚠️ Could not post comment for $fileName"
     }
 
-    # --- Track issues for summary ---
     if ($review -match "(?i)(No issues found|LGTM|Minor issues only)") {
         $reviewSummary += "✅ $fileName — Clean or minor issues only."
     } else {
@@ -154,40 +158,6 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
         $reviewSummary += "⚠️ $fileName — Issues found, see AI comments."
     }
 
-    # ✅ Smooth pacing (avoid burst requests)
     Start-Sleep -Seconds 2
-}
-
-# --- 4️⃣ Final Summary Comment ---
-$summaryText = if ($issuesFound) {
-"🛑 **AI Summary:** Some files have issues.  
-Please review the comments and fix the reported problems.  
-The AI reviewer will automatically recheck and merge after new commits."
-} else {
-"✅ **AI Summary:** All reviewed files are clean or have only minor issues.  
-Proceeding with automatic merge. 🚀"
-}
-
-$summaryBody = @{ body = $summaryText + "`n`n---`n`n" + ($reviewSummary -join "`n") } | ConvertTo-Json
-Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" -Headers $headersGH -Method Post -Body $summaryBody
-
-# --- 5️⃣ Merge Decision ---
-if ($issuesFound) {
-    Write-Host "🚫 Issues detected, skipping merge."
-    exit 0
-}
-
-# --- Merge Clean PR ---
-Write-Host "🎉 All clean — proceeding with auto-merge."
-$mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
-$mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
-try {
-    $mergeResponse = Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
-    if ($mergeResponse.merged) {
-        Write-Host "🚀 PR successfully merged by AI."
-    } else {
-        Write-Host "⚠️ Merge failed: $($mergeResponse.message)"
-    }
-} catch {
-    Write-Host "❌ Merge failed: $($_.Exception.Message)"
+    $index++  # 🆕 Move to next file count
 }
