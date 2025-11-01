@@ -102,16 +102,38 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
             @{ role = "system"; content = "You are a senior Python reviewer. Be concise and accurate." },
             @{ role = "user"; content = $prompt }
         )
+        max_tokens = 300  # ✅ Limit token size to avoid overusing quota
     } | ConvertTo-Json -Depth 5
 
     $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-15-preview"
 
-    try {
-        $resp = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
+    # --- Robust Retry Logic (Microsoft best practice) ---
+    $maxRetries = 5
+    $retryDelay = 10
+    $resp = $null
+
+    for ($i = 1; $i -le $maxRetries; $i++) {
+        try {
+            $resp = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
+            break
+        } catch {
+            $status = $_.Exception.Response.StatusCode.value__
+            if ($status -eq 429 -and $i -lt $maxRetries) {
+                $delay = $retryDelay * $i
+                Write-Host "⚠️ Rate limited (429). Waiting $delay seconds before retry $i..."
+                Start-Sleep -Seconds $delay
+            } else {
+                Write-Host "❌ AI request failed: $($_.Exception.Message)"
+                break
+            }
+        }
+    }
+
+    if (-not $resp) {
+        $review = "⚠️ AI failed after retries for $fileName."
+    } else {
         $review = $resp.choices[0].message.content
         Write-Host "🤖 AI review complete for $fileName"
-    } catch {
-        $review = "⚠️ AI failed: $($_.Exception.Message)"
     }
 
     # --- Post AI comment ---
@@ -131,6 +153,9 @@ If only minor issues, reply exactly: "Minor issues only. LGTM."
         $issuesFound = $true
         $reviewSummary += "⚠️ $fileName — Issues found, see AI comments."
     }
+
+    # ✅ Smooth pacing (avoid burst requests)
+    Start-Sleep -Seconds 2
 }
 
 # --- 4️⃣ Final Summary Comment ---
