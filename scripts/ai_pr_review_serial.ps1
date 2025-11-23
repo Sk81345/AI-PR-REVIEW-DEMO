@@ -1,141 +1,205 @@
 #!/usr/bin/env pwsh
-# ============================================
-# 🤖 AI PR Review with RAG + DB Logging (GitHub)
-# ============================================
+# =======================================================
+# 🤖 AI Pull Request Review + Auto Comment + Auto Merge
+# =======================================================
 
 param(
     [string]$PR_NUMBER,
     [string]$REPO
 )
 
-# 1️⃣ Setup environment
+# --- 1️⃣ Environment Setup ---
 $openaiEndpoint = $env:OPENAI_ENDPOINT
-$openaiKey = $env:OPENAI_API_KEY
-$deployment = $env:OPENAI_DEPLOYMENT_NAME
-$ghToken = $env:GITHUB_TOKEN
+$openaiKey      = $env:OPENAI_API_KEY
+$deployment     = $env:OPENAI_DEPLOYMENT_NAME
+$ghToken        = $env:GITHUB_TOKEN
 
 $headersAI = @{
-    "api-key" = $openaiKey
+    "api-key"      = $openaiKey
     "Content-Type" = "application/json"
 }
 $headersGH = @{
     "Authorization" = "Bearer $ghToken"
-    "Accept" = "application/vnd.github+json"
+    "Accept"        = "application/vnd.github+json"
 }
 
-# 2️⃣ Get changed files
-Write-Host "🔍 Fetching changed files for PR #$PR_NUMBER..."
-$filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files"
+# --- 2️⃣ Fetch PR changed files ---
+Write-Host "[INFO] Fetching changed files for PR #$PR_NUMBER..."
+$filesUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/files?per_page=100"
 $files = Invoke-RestMethod -Uri $filesUri -Headers $headersGH
-$pythonFiles = $files | Where-Object { $_.filename -like "*.py" }
+if (-not $files) {
+    Write-Host "[ERROR] No files found in PR."
+    exit 1
+}
 
-if (-not $pythonFiles) {
-    Write-Host "⚠️ No Python files changed. Exiting."
+$reviewFiles = $files | Where-Object { $_.status -ne "removed" -and $_.filename -like "*.py" }
+
+if (-not $reviewFiles) {
+    Write-Host "[INFO] No Python files found. Skipping AI review, merging directly."
+    $mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
+    $mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
+    Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
     exit 0
 }
 
-# 3️⃣ Initialize SQLite DB
-. ./scripts/init_db.ps1
-Add-Type -AssemblyName System.Data.SQLite
-$connection = New-Object System.Data.SQLite.SQLiteConnection("Data Source=ai_reviews.db;Version=3;")
-$connection.Open()
+# --- 3️⃣ Review loop ---
+$issuesFound = $false
+$reviewSummary = @()
+$totalFiles = $reviewFiles.Count
+$index = 1
 
-foreach ($file in $pythonFiles) {
+foreach ($file in $reviewFiles) {
     $fileName = $file.filename
-    $rawUrl = $file.raw_url
-    Write-Host "📄 Checking file: $fileName"
+    $rawUrl   = $file.raw_url
 
-    $content = Invoke-RestMethod -Uri $rawUrl -Headers $headersGH
-    $lines = $content -split "`n"
+    Write-Host ""
+    Write-Host "[INFO] [$index/$totalFiles] Starting AI review for file: $fileName"
 
-    # === 🧠 RAG FILTER ===
-    # RAG Rule: File must be 40 lines or less, AND must not contain secrets.
-    $isTooLong = $lines.Count -gt 40
-    $hasSecrets = $content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])"
-
-    if ($isTooLong -or $hasSecrets) {
-        Write-Host "⛔ Skipped by RAG Filter: $fileName (Too long or contains secrets)"
+    try {
+        $content = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent"="ai-review" }
+    } catch {
+        Write-Host "[WARN] Could not fetch file: $fileName"
         continue
     }
 
-    # Run linting
+    # --- RAG Filters ---
+
+        $lines = $content -split "`n"
+        if ($lines.Count -gt 40) {
+            Write-Host "🚫 $fileName skipped (more than 40 lines per RAG rule). Marking as issue."
+            $issuesFound = $true
+            $reviewSummary += "⚠️ $fileName — Skipped due to exceeding 40-line RAG rule (manual review needed)."
+            $index++
+            continue
+        }
+        if ($content -match "(?i)(password|token|secret|apikey|authorization\s*[:=])") {
+            Write-Host "🚫 $fileName skipped (possible secret detected). Marking as issue."
+            $issuesFound = $true
+            $reviewSummary += "⚠️ $fileName — Skipped due to potential secret detected (manual review required)."
+            $index++
+            continue
+        }
+
+    # --- Lint & Syntax ---
     $tmpFile = "tmp_$($fileName -replace '[\\/]', '_')"
     Set-Content $tmpFile $content
-    try {
-        $lint = python3 -m pylint $tmpFile --score=no 2>&1
-    } catch { $lint = "Lint failed" }
+    $lint = ""
+    $syntaxOK = $true
+
+    try { python3 -m py_compile $tmpFile } catch { $syntaxOK = $false }
+    try { $lint = (python3 -m pylint $tmpFile --score=no 2>&1) } catch { $lint = "pylint failed" }
     Remove-Item $tmpFile -Force
 
+    # --- AI Review ---
+    $prompt = @"
+Review the following Python file for code quality, logic, and security.
+Include concrete improvement suggestions and example fixes.
 
-    # 4️⃣ LONG CHAIN: FETCH CONTEXT FROM DB (NEW LOGIC)
-    $priorReviews = ""
-    try {
-        $cmd = $connection.CreateCommand()
-        # Fetch the last 3 prior reviews for this file, ordered by timestamp
-        $cmd.CommandText = "SELECT review_summary FROM reviews WHERE pr_number = @pr AND file_name = @file ORDER BY timestamp DESC LIMIT 3"
-        $cmd.Parameters.AddWithValue("@pr", $PR_NUMBER) | Out-Null
-        $cmd.Parameters.AddWithValue("@file", $fileName) | Out-Null
+File: $fileName
+Content:
+$content
 
-        $reader = $cmd.ExecuteReader()
-        while ($reader.Read()) {
-            $priorReviews += "--- Prior Review Context ---\n" + $reader.GetString(0) + "\n"
-        }
-    } catch {
-        Write-Host "⚠️ Could not read prior reviews from DB. Proceeding without history."
-    }
+Linter Output:
+$lint
 
-    # 5️⃣ AI REVIEW (Structured Suggestion Prompt)
-    $userPrompt = "Review the following Python code:\n$content\n\nLinter output:\n$lint"
-    if ($priorReviews) {
-        # Prepend history to the prompt if available
-        $userPrompt = "Historical Review Context:\n$priorReviews\n\n--- New Code to Review ---\n" + $userPrompt
-    }
+If code is perfect, reply exactly: "No issues found. LGTM."
+If only minor issues, reply exactly: "Minor issues only. LGTM."
+"@
 
     $body = @{
         messages = @(
-            @{
-                role = "system";
-                # CRITICAL: Force the AI to output suggestions in a structured markdown block
-                content = @"
-You are a senior Python reviewer and quality engineer. Your output MUST be a detailed, constructive review.
-For every suggestion, provide the corrected code within a clean, isolated **Python markdown code block (\`\`\`python ... \`\`\`)** immediately following your explanation.
-If you find no issues, state 'No issues found. LGTM.'
-"@
-            },
-            @{ role = "user"; content = $userPrompt }
+            @{ role = "system"; content = "You are a senior Python reviewer. Be concise and accurate." },
+            @{ role = "user"; content = $prompt }
         )
-    } | ConvertTo-Json -Depth 4
+        max_tokens = 300
+    } | ConvertTo-Json -Depth 5
 
-    try {
-        $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-01"
-        $response = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
-        $review = $response.choices[0].message.content
-        Write-Host "✅ AI Review completed for $fileName"
-    } catch {
-        Write-Host "⚠️ AI review failed for $fileName. Error: $($_.Exception.Message)"
-        continue
+    $aiUri = "$openaiEndpoint/openai/deployments/$deployment/chat/completions?api-version=2024-02-15-preview"
+
+    $maxRetries = 5
+    $retryDelay = 10
+    $resp = $null
+
+    for ($i = 1; $i -le $maxRetries; $i++) {
+        try {
+            $resp = Invoke-RestMethod -Uri $aiUri -Headers $headersAI -Method Post -Body $body
+            break
+        } catch {
+            $status = $_.Exception.Response.StatusCode.value__
+            if ($status -eq 429 -and $i -lt $maxRetries) {
+                $delay = $retryDelay * $i
+                Write-Host "[WARN] Rate limited (429). Waiting $delay seconds before retry $i..."
+                Start-Sleep -Seconds $delay
+            } else {
+                Write-Host ("[ERROR] AI request failed for {0}: {1}" -f $fileName, $_.Exception.Message)
+                break
+            }
+        }
     }
 
-    # 6️⃣ Save to DB and Post Comment
+    if (-not $resp) {
+        $review = "⚠️ AI failed after retries for $fileName."
+    } else {
+        $review = $resp.choices[0].message.content
+        Write-Host "[AI] Review complete for $fileName"
+    }
 
-    # 🗃️ Save to DB
-    $cmd = $connection.CreateCommand()
-    # Note: We use the correct column name 'timestamp' here
-    $cmd.CommandText = "INSERT INTO reviews (pr_number, file_name, review_summary) VALUES (@pr, @file, @review)"
-    $cmd.Parameters.AddWithValue("@pr", $PR_NUMBER) | Out-Null
-    $cmd.Parameters.AddWithValue("@file", $fileName) | Out-Null
-    $cmd.Parameters.AddWithValue("@review", $review) | Out-Null
-    $cmd.ExecuteNonQuery()
-    Write-Host "🗃️ Review summary logged to SQLite DB."
-
-    # 💬 Comment back to PR
+    # --- Post AI comment with file info ---
     $commentUri = "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
-    $bodyComment = @{
-        body = "🤖 **AI Code Suggestion for `$fileName`** (Reviewed with History):`n$review"
+    $commentBody = @{
+        body = "🤖 **AI Review for file `$($fileName)` ($index of $totalFiles)**`n`n$review`n`n---`n📄 *Next file will be reviewed automatically...*"
     } | ConvertTo-Json
-    Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $bodyComment
-    Write-Host "💬 Comment posted for $fileName"
+    try {
+        Invoke-RestMethod -Uri $commentUri -Headers $headersGH -Method Post -Body $commentBody
+        Write-Host "[INFO] Comment posted for $fileName ($index of $totalFiles)"
+    } catch {
+        Write-Host "[WARN] Could not post comment for $fileName"
+    }
+
+    # --- Track issues for summary ---
+    if ($review -match "(?i)(No issues found\. LGTM\.|Minor issues only\. LGTM\.)") {
+        Write-Host "[INFO] Clean result detected for $fileName"
+        $reviewSummary += "✅ $fileName — Clean or minor issues only."
+    } else {
+        $issuesFound = $true
+        Write-Host "[WARN] Issues detected in $fileName"
+        $reviewSummary += "⚠️ $fileName — Issues found, see AI comments."
+    }
+
+    Start-Sleep -Seconds 2
+    $index++
 }
 
-$connection.Close()
-Write-Host "🎯 All reviews completed and logged to DB."
+# --- 4️⃣ Final Summary Comment ---
+$summaryText = if ($issuesFound) {
+"🛑 **AI Summary:** Some files have issues.  
+Please review the comments and fix the reported problems.  
+The AI reviewer will automatically recheck and merge after new commits."
+} else {
+"✅ **AI Summary:** All reviewed files are clean or have only minor issues.  
+Proceeding with automatic merge. 🚀"
+}
+
+$summaryBody = @{ body = $summaryText + "`n`n---`n`n" + ($reviewSummary -join "`n") } | ConvertTo-Json
+Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" -Headers $headersGH -Method Post -Body $summaryBody
+
+# --- 5️⃣ Merge Decision ---
+if ($issuesFound) {
+    Write-Host "[INFO] Issues detected, skipping merge."
+    exit 0
+}
+
+# --- Merge Clean PR ---
+Write-Host "[INFO] All files clean — proceeding with auto-merge."
+$mergeUri = "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/merge"
+$mergeBody = @{ merge_method = "squash" } | ConvertTo-Json
+try {
+    $mergeResponse = Invoke-RestMethod -Uri $mergeUri -Headers $headersGH -Method Put -Body $mergeBody
+    if ($mergeResponse.merged) {
+        Write-Host "[SUCCESS] 🚀 PR successfully merged by AI."
+    } else {
+        Write-Host "[WARN] Merge failed: $($mergeResponse.message)"
+    }
+} catch {
+    Write-Host "[ERROR] Merge failed: $($_.Exception.Message)"
+}
