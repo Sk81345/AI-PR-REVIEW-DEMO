@@ -1,20 +1,28 @@
+"""
+Module for managing a simple to-do list.
+"""
+
 class ToDoList:
+    """
+    A class to represent a simple to-do list.
+    """
+
     def __init__(self):
+        """
+        Initialize an empty list of tasks.
+        """
         self.tasks = []
 
     def add_task(self, task: str):
+        """
+        Add a task to the to-do list.
+
+        Args:
+            task (str): The task description.
+        """
         self.tasks.append(task)
 
-    def show_tasks(self):
-        if not self.tasks:
-            print("No tasks yet!")
-            return
-        print("Your Tasks:")
-        for i, task in enumerate(self.tasks, start=1):
-            print(f"{i}. {task}")
+    def show
 
-if __name__ == "__main__":
-    todo = ToDoList()
-    todo.add_task("Buy groceries")
-    todo.add_task("Finish Python project")
-    todo.show_tasks()
+---
+📄 *Next file will be reviewed automatically...*
