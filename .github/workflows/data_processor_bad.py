@@ -1,4 +1,5 @@
 # small_test.py
+
 def greet(name: str) -> str:
     """Return a friendly greeting."""
     return f"Hello, {name}!"
@@ -8,5 +9,5 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 
 if __name__ == "__main__":
-    print(greet("SChyam"))
+    print(greet("Shyam"))
     print(add_numbers(5, 6))
