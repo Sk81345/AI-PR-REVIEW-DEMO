@@ -1,28 +1,11 @@
-"""
-Module for managing a simple to-do list.
-"""
+def celsius_to_fahrenheit(c: float) -> float:
+    """Convert Celsius to Fahrenheit."""
+    return (c * 9/5) + 32
 
-class ToDoList:
-    """
-    A class to represent a simple to-do list.
-    """
+def fahrenheit_to_celsius(f: float) -> float:
+    """Convert Fahrenheit to Celsius."""
+    return (f - 32) * 5/9
 
-    def __init__(self):
-        """
-        Initialize an empty list of tasks.
-        """
-        self.tasks = []
-
-    def add_task(self, task: str):
-        """
-        Add a task to the to-do list.
-
-        Args:
-            task (str): The task description.
-        """
-        self.tasks.append(task)
-
-    def show
-
----
-📄 *Next file will be reviewed automatically...*
+if __name__ == "__main__":
+    print("25°C =", celsius_to_fahrenheit(25), "°F")
+    print("77°F =", fahrenheit_to_celsius(77), "°C")
