@@ -1,4 +1,4 @@
-# small_test.py
+"""This module performs a simple math operation and prints the result."""
 def greet(name: str) -> str:
     """Return a friendly greeting."""
     return f"Hello, {name}!"
