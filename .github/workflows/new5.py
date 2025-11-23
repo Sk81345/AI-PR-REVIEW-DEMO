@@ -1,6 +1,6 @@
 """This module converts temperatures from Celsius to Fahrenheit and prints the result."""
 
-def celsius_to_fahrenheit(celsius: float) -> float:
+ celsius_to_fahrenheit(celsius: float) -> float:
     """Return the temperature converted from Celsius to Fahrenheit."""
     return (celsius * 9 / 5) + 32
 
