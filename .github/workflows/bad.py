@@ -10,4 +10,4 @@ def divide(x, y):
     except:
         print("error") # not specific exception handling
 
-token = "abcd1234"  # fake secret to trigger AI RAG filter
+# token = "abcd1234"  # fake secret to trigger AI RAG filter
