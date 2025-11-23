@@ -1,13 +1,9 @@
-# bad_code.py
-import os, sys
+"""A simple t Python script that greets the user."""
 
-def add_numbers(a,b):
- return a+b
+def greet(name: str) -> None:
+    """Print a personalized greeting."""
+    print(f"Hello, {name}!")
 
-def divide(x, y):
-    try:
-        return x / y
-    except:
-        print("error") # not specific exception handling
 
-# token = "abcd1234"  # fake secret to trigger AI RAG filter
+if __name__ == "__main__":
+    greet("AI Reviewer")
