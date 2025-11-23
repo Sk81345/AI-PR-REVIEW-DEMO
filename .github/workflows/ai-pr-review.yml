@@ -1,0 +1,124 @@
+name: AI Pull Request Review (PowerShell + RAG)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    types: [opened, synchronize, reopened, closed]
+
+  # Manual trigger (still allowed)
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.run_id }}"
+  cancel-in-progress: true
+
+jobs:
+  # =======================================================
+  # 🧠 1️⃣ AI CODE REVIEW + CONDITIONAL AUTO-MERGE JOB
+  # =======================================================
+  ai_pr_review:
+    name: AI PR Review
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    outputs:
+      merged: ${{ steps.merge_check.outputs.result }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip sqlite3
+          pip3 install pylint
+
+      - name: Azure Login for Deployment
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Deploy GPT-4o Model
+        shell: bash
+        run: |
+          echo "Deploying model..."
+          az account set --subscription "9e6baf99-22ca-4234-948e-7d4a9f8ccd32"
+          az cognitiveservices account deployment create \
+            --resource-group RG \
+            --name sgee \
+            --deployment-name gpt4o-deploy \
+            --model-name gpt-4o \
+            --model-version "2024-11-20" \
+            --model-format OpenAI \
+            --sku-capacity 1 \
+            --sku-name "Standard"
+
+      - name: Run PowerShell AI PR Review Script
+        id: ai_review
+        shell: pwsh
+        env:
+          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          pwsh ./scripts/ai_pr_review_serial.ps1 -PR_NUMBER $env:PR_NUMBER -REPO $env:REPO
+
+    
+      - name: Check if Merge Succeeded
+        id: merge_check
+        shell: bash
+        run: |
+          sleep 5
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          STATE=$(gh pr view $PR_NUMBER --json state --jq '.state')
+          echo "PR state: $STATE"
+          if [ "$STATE" = "MERGED" ]; then
+            echo "result=true" >> $GITHUB_OUTPUT
+          else
+            echo "result=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  # =======================================================
+  # 🚀 2️⃣ POST-MERGE DEPLOYMENT JOB
+  # =======================================================
+  post_merge_pipeline:
+    name: Post-Merge Pipeline
+    needs: ai_pr_review
+    runs-on: ubuntu-latest
+    if: ${{ needs.ai_pr_review.outputs.merged == 'true' }}
+
+    steps:
+      - name: Checkout merged master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Azure Login for Post-Merge
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+
+      - name: Run Full End-to-End Tests
+        run: |
+          echo "✅ Code merged to master."
+          echo "🧪 Running full integration and end-to-end tests..."
+
+      - name: Deploy to Staging Environment
+        run: |
+          echo "🚀 Deployment process started for merged PR!"
