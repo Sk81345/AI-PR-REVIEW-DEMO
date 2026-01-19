@@ -9,7 +9,7 @@ on:
 jobs:
   test-runner:
     runs-on:
-      - self-hosted
+
       - NextOpsLVM05
 
     steps:
