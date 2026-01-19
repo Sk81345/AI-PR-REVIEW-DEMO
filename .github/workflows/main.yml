@@ -1,0 +1,24 @@
+name: Test Self Hosted Runner
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-runner:
+    runs-on:
+      - self-hosted
+      - NextOpsLVM05
+
+    steps:
+      - name: Check runner details
+        run: |
+          echo "Runner name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+          hostname
+          whoami
+
+      - name: Simple echo test
+        run: echo "✅ Workflow is running on self-hosted runner"
