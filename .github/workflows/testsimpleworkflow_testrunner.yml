@@ -10,7 +10,7 @@ jobs:
   test-runner:
     runs-on:
 
-      - NextOpsLVM05
+      - SelfRunnerLinux
 
     steps:
       - name: Check runner details
