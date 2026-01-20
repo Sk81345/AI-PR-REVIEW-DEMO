@@ -1,0 +1,5 @@
+name: Organization Runner Status Check
+
+on:
+  schedule:
+    - cron: '0 * * * *'
