@@ -3,3 +3,15 @@ name: Organization Runner Status Check
 on:
   schedule:
     - cron: '0 * * * *'
+
+jobs:
+  check-org-runners:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call GitHub org runners API
+        run: |
+          curl -s \
+            -H "Authorization: Bearer ${{ secrets.ORG_RUNNER_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/orgs/Sk81345/actions/runners
