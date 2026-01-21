@@ -10,7 +10,10 @@ jobs:
   test-runner:
     runs-on:
 
-      - ruunner1
+      - self-hosted
+      - Linux
+      - X64
+      - vm1
 
     steps:
       - name: Check runner details
