@@ -13,7 +13,7 @@ jobs:
       - self-hosted
       - Linux
       - X64
-      - vm1
+   
 
     steps:
       - name: Check runner details
