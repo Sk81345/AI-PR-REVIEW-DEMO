@@ -1,4 +1,4 @@
-name: Organization Runner Status Check
+name: GitHub Runner Status Monitoring
 
 on:
   schedule:
@@ -6,13 +6,95 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-org-runners:
+  check-runners:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Call GitHub org runners API
+
+      # -----------------------------
+      # Step 1: Call ORG-level runners
+      # -----------------------------
+      - name: Fetch organization runners
+        id: org_runners
         run: |
+          echo "Fetching organization-level runners..."
+
           curl -s \
             -H "Authorization: Bearer ${{ secrets.ORG_RUNNER_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/orgs/Sk81345/actions/runners
+            https://api.github.com/orgs/Sk81345/actions/runners \
+            > org_runners.json
+
+          cat org_runners.json
+
+      # --------------------------------
+      # Step 2: Call REPO-level runners
+      # --------------------------------
+      - name: Fetch repository runners
+        id: repo_runners
+        run: |
+          echo "Fetching repository-level runners..."
+
+          # LIST OF REPOS THAT HAVE RUNNERS
+          REPOS=("repo1" "repo2" "repo3")
+
+          echo "[]" > repo_runners_all.json
+
+          for repo in "${REPOS[@]}"
+          do
+            echo "Checking repo: $repo"
+
+            curl -s \
+              -H "Authorization: Bearer ${{ secrets.ORG_RUNNER_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/Sk81345/$repo/actions/runners \
+              > temp.json
+
+            jq '.runners[]' temp.json >> repo_runners_all.json
+          done
+
+          cat repo_runners_all.json
+
+      # --------------------------------
+      # Step 3: Evaluate runner status
+      # --------------------------------
+      - name: Evaluate offline runners
+        id: evaluate
+        run: |
+          echo "Evaluating runner status..."
+
+          OFFLINE_COUNT=0
+
+          echo "---- Org runners ----"
+          jq -r '.runners[] | "\(.name) \(.status)"' org_runners.json
+
+          OFFLINE_ORG=$(jq '[.runners[] | select(.status=="offline")] | length' org_runners.json)
+
+          echo "Offline org runners: $OFFLINE_ORG"
+
+          OFFLINE_COUNT=$((OFFLINE_COUNT + OFFLINE_ORG))
+
+          echo "---- Repo runners ----"
+          OFFLINE_REPO=$(jq '[select(.status=="offline")] | length' repo_runners_all.json)
+
+          echo "Offline repo runners: $OFFLINE_REPO"
+
+          OFFLINE_COUNT=$((OFFLINE_COUNT + OFFLINE_REPO))
+
+          echo "Total offline runners: $OFFLINE_COUNT"
+
+          echo "offline_count=$OFFLINE_COUNT" >> $GITHUB_OUTPUT
+
+      # --------------------------------
+      # Step 4: Prepare summary
+      # --------------------------------
+      - name: Prepare offline runner summary
+        if: steps.evaluate.outputs.offline_count != '0'
+        run: |
+          echo "Preparing offline runner summary..."
+
+          echo "OFFLINE RUNNERS (ORG LEVEL):"
+          jq -r '.runners[] | select(.status=="offline") | .name' org_runners.json
+
+          echo "OFFLINE RUNNERS (REPO LEVEL):"
+          jq -r 'select(.status=="offline") | .name' repo_runners_all.json
