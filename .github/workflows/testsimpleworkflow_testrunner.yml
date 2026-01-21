@@ -10,7 +10,7 @@ jobs:
   test-runner:
     runs-on:
 
-      - SelfRunnerLinux
+      - ruunner1
 
     steps:
       - name: Check runner details
