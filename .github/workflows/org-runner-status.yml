@@ -1,8 +1,8 @@
 name: GitHub Runner Status Monitoring
 
-on:
-  schedule:
-    - cron: '0 * * * *'
+#on:
+  #schedule:
+    #- cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
