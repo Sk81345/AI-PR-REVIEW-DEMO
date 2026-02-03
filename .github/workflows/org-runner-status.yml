@@ -3,6 +3,10 @@ name: AgentStatus
 #on:
   #schedule:
     #- cron: '0 * * * *'
+ on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
